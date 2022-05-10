@@ -1,0 +1,161 @@
+---
+title: "RNASeq Analysis"
+author: "Sonali Arora"
+date: "May 9, 2022"
+output: 
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r}
+rm(list=ls())
+
+library(DESeq2)
+library(edgeR)
+library(ggplot2)
+library(pheatmap)
+library(RColorBrewer)
+
+rawdata <- readRDS("raw_data.Rds")
+
+coldata = data.frame(sampleName = colnames(rawdata), 
+   sampleType = c(  #rep("2SA-YAP1", 3), 
+          rep("94-YAP1-MAML2", 3), rep("GFP", 3),   
+           rep("wtYAP1", 3), rep("YAP1-MAML2", 3)   ))
+coldata$sampleType = factor(coldata$sampleType, 
+        levels = c("GFP", "wtYAP1",   "YAP1-MAML2",   "94-YAP1-MAML2"))
+
+sampleName = colnames(rawdata)
+sample_levs = c("GFP", "wtYAP1", 
+                "YAP1-MAML2",   
+                "94-YAP1-MAML2")
+color_levs = c( "darkgreen", "blue",  
+                "darksalmon",   
+                "red")
+
+rownames(coldata) = colnames(rawdata)
+
+dds <- DESeqDataSetFromMatrix(countData = rawdata, 
+                              colData = coldata, design = ~ sampleType)
+norm_data <- assay(rlog(dds))
+
+sampleDists <- dist( t( norm_data ) )
+sampleDistMatrix <- as.matrix( sampleDists )
+hc = hclust(sampleDists)
+
+mdsData <- data.frame(cmdscale(sampleDistMatrix))
+mds <- cbind(mdsData, as.data.frame(coldata))
+mds1 <- ggplot(mds, aes(X1,X2,color=sampleType)) +
+    geom_point(size=4)+ theme_bw() +
+    ggtitle(paste0("MDS plot : ")) +
+    theme(plot.title = element_text(lineheight=.8, face="bold")) +
+    scale_color_manual(values = color_levs, 
+                       labels = sample_levs)
+
+pc= prcomp(t(norm_data))
+pc_data1 = data.frame(PC1=pc$x[,1], PC2=pc$x[,2],
+                      sampleType=(coldata[,"sampleType"]) )
+percentVar <- (pc$sdev^2 / sum( pc$sdev^2 ) )*100
+percentVar= round(percentVar[1:2], 2)
+p1 = ggplot(pc_data1, aes(PC1, PC2, color=sampleType)) +
+    geom_point(size=4) +theme_bw() +
+    xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+    ylab(paste0("PC2: ",percentVar[2],"% variance"))+
+    ggtitle(paste0("PCA plot : ")) +
+    theme(plot.title = element_text(lineheight=.8, face="bold")) +
+    scale_color_manual(values = color_levs, 
+                       labels = sample_levs)
+
+pdf(file.path( paste0("exploratory_plot_3_15_2022.pdf")), width =10, height = 5)
+plot(hc, main = paste0("Dendrogram"))
+print(mds1)
+print(p1)
+dev.off()
+
+```
+# edgeR analysis
+
+```{r}
+
+fc = 1.25
+test_groups = c("wtYAP1", "94-YAP1-MAML2")
+res = lapply(test_groups, function(test){
+    
+    col_idx = which(coldata$sampleType==test)
+    gfp_idx = which( coldata$sampleType=="GFP")
+    
+    temp_cpm = cpm_counts[, c(gfp_idx, col_idx) ]
+    colnames(temp_cpm) = paste0("cpm_", colnames(temp_cpm))
+    temp_raw = rawdata[, c(gfp_idx, col_idx) ]
+    colnames(temp_raw) = paste0("raw_", colnames(temp_raw))
+    
+    temp_raw = temp_raw[common_goi, ]
+    temp_cpm = temp_cpm[common_goi, ]
+    
+    temp_coldata = coldata[ c(col_idx, gfp_idx), ]
+    
+    group = c(rep("GFP", 3), rep(test, 3))
+    group = factor(group, levels = c("GFP", test))
+    y <- DGEList(counts = temp_raw, group = group)
+    design <- model.matrix(~group)
+    rownames(design) <- colnames(y)
+    y <- calcNormFactors(y)
+    
+    y <- estimateDisp(y, design)
+    fit <- glmFit(y,design)
+    lrt <- glmLRT(fit)
+    
+   
+    restbl= as.data.frame(topTags(lrt, n=nrow(raw)))
+    final = cbind(gene = rownames(restbl), 
+                  restbl[, c("logFC", "FDR")], 
+                  temp_raw[rownames(restbl), ], 
+                  temp_cpm[rownames(restbl), ])
+  
+    
+    up_reg_1.25 <- final[ which(final$logFC > log2(1.25) & final$FDR < 0.05), ]
+    down_reg_1.25<- final[ which(final$logFC < -log2(1.25) & final$FDR < 0.05), ]
+    
+    lst = list(all_DE_results = final, 
+               up_reg_genes_1.25 = up_reg_1.25, 
+               down_reg_genes_1.25 = down_reg_1.25)
+    write_xlsx(lst, path = paste0("Individual_edgeR_analysis_", test,"_vs_GFP_1_28_2022.xlsx") )
+    
+    c(test, "GFP", nrow(up_reg_1.25), nrow(down_reg_1.25))
+})
+
+```
+
+# make volcano plots
+
+
+```{r}
+library(readxl)
+
+fls = c("Individual_edgeR_analysis_wtYAP1_vs_GFP_1_28_2022.xlsx", 
+        "Individual_edgeR_analysis_YAP1-MAML2_vs_GFP_1_28_2022.xlsx", 
+        "Individual_edgeR_analysis_94-YAP1-MAML2_vs_GFP_1_28_2022.xlsx")
+
+l1 = lapply(fls, function(fname){
+  res <- read_xlsx(fname, sheet =1)
+  res  = as.data.frame(res)
+  res$log10_FDR = -log10(res$FDR)
+  
+  lfc = 0.33 
+  fdr_cutoff = -log10(0.05)
+  
+  pdf_name = gsub("Individual_edgeR_analysis_", "Volcano_plot_", fname)
+  pdf_name = gsub(".xlsx", ".pdf", pdf_name)
+  
+  pdf(pdf_name, width = 10)
+  
+  with(res, plot(logFC, log10_FDR, pch=20, main="Volcano plot", col = "gray80") )
+  abline(v=c(-lfc, lfc), col=c("gray70", "gray70"),  lty=c(2, 2), lwd =c(3,3) )
+  abline(h=c(fdr_cutoff,fdr_cutoff), col=c("gray70", "gray70"),  lty=c(2, 2), lwd =c(3,3) )
+  with(subset(res, log10_FDR > fdr_cutoff & logFC > lfc), points(logFC, log10_FDR, pch=20, col="deeppink")) 
+  with(subset(res, log10_FDR > fdr_cutoff & logFC < -lfc), points(logFC, log10_FDR, pch=20, col="darkblue")) 
+  
+  dev.off()
+})
+```

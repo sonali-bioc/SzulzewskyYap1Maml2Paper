@@ -1,0 +1,287 @@
+---
+title: "Reproducing Figures for the manuscript"
+author: "Sonali Arora"
+date: "May 9, 2022"
+output: 
+  html_document:
+    toc: true
+    theme: united
+---
+
+
+```{r}
+
+rm(list=ls())
+
+use_cols = c( "forestgreen", "#000000", "#0082c8", "#aa6e28",
+              "gray", "orange", "purple", "red", #"#e6beff", "#d2f53c",
+              "olivedrab3", "orchid1", "lightskyblue", "green")
+
+who_cols =c(
+    'WHO I'="orange", 
+    'WHO II' = "forestgreen",
+    'WHO III' = "red", 
+    'Not Available' = "gray60", 
+    "human YAP1fus"="blue", 
+    "mouse YAP1fus"="lightpink1",
+    "mouseNLS-2SA-YAP1" = "maroon",  "PA"  = "olivedrab")
+# for TRAF7.KLF4.AKT1.SMO,
+mut_cols = c(
+    "YES" = "red", 
+    "NO" = "black", 
+    'Not Available' = "gray60", 
+    "human YAP1fus"="blue", 
+    "mouse YAP1fus"="lightpink1",
+    "mouseNLS-2SA-YAP1" = "maroon",  "PA"  = "olivedrab")
+# for NF2mu_Chr22, 
+nf2_cols = c(
+    "YES" = "red", 
+    "NO" = "black", 
+    'Not Available' = "gray60", 
+    "human YAP1fus"="blue", 
+    "mouse YAP1fus"="lightpink1",
+    "mouseNLS-2SA-YAP1" = "maroon",  "PA"  = "olivedrab")
+
+meth_cols = c(
+    "NF2 Mut Ben-1" = "orange", 
+    "NF2 mut intermediate-A" = "hotpink", 
+    "NF2 mut intermediate-B" = "cadetblue1", 
+    "NF2 Mut Mal" = "red",
+    "NF2 WT Ben-2" = "purple", 
+    "NF2 WT intermediate-B" ="darkcyan", 
+    'Not Available' = "gray60", 
+    "human YAP1fus"="blue", 
+    "mouse YAP1fus"="lightpink1",
+    "mouseNLS-2SA-YAP1" = "maroon",
+    "PA"  = "olivedrab")
+
+library(ggplot2)
+library(dendextend)
+s1 = 3
+tag = "UMAP"
+
+my_umap_fun = function( sample_info, who_cols , nf2_cols, mut_cols, meth_cols,  tag){
+    finaldf3 = sample_info
+    plot0= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D, color=Dataset )) +
+        geom_point(size=s1) + theme_bw() + ggtitle("UMAP : By Dataset")
+    
+    plot1= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = Gender )) +
+        geom_point(size=s1) + theme_bw() + ggtitle("UMAP : By Gender")
+    
+    plot2= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = WHO.grade )) +
+        geom_point(size=s1) + theme_bw() + ggtitle("UMAP : By WHO Grade") +
+        scale_color_manual (values = who_cols, labels = names(who_cols))
+    
+    plot3= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = NF2mu_Chr22 )) +
+        geom_point(size=s1) + theme_bw() + ggtitle("UMAP : By NF2mu/Chr22") +
+        scale_color_manual (values = nf2_cols, labels = names(nf2_cols))
+    
+    plot4= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color =TRAF7.KLF4.AKT1.SMO  )) +
+        geom_point(size=s1) + theme_bw() + ggtitle("UMAP : By TRAF7.KLF4.AKT1.SMO Status") +
+        scale_color_manual (values = mut_cols, labels = names(mut_cols))
+    
+    plot5= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = Mutation_status )) +
+        geom_point(size=s1) + theme_bw() + scale_colour_manual(values = use_cols) + 
+        ggtitle("UMAP : By Mutation Gene")
+    
+    plot6= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = Methylation_status, )) +
+        geom_point(size=s1) + theme_bw() + 
+        scale_colour_manual(values = meth_cols, labels = names(meth_cols)) + 
+        ggtitle("UMAP : By Methylation Status")
+    
+    idx = which(finaldf3$Methylation_status  %in% c("NF2 mut intermediate-B", 
+                                                    "NF2 WT intermediate-B", 
+                                                    "NF2 mut intermediate-A"))
+    finaldf3$Methylation_status[idx] = 'Not Available'
+    
+    
+    
+    plot7= ggplot(finaldf3, aes(UMAP1_2D, UMAP2_2D,  color = Methylation_status, )) +
+        geom_point(size=s1) + theme_bw() + 
+        scale_colour_manual(values = meth_cols, labels = names(meth_cols)) + 
+        ggtitle("UMAP : By Methylation Status(v2)")
+    
+    pdf(file.path( paste0(tag, ".pdf")), width = 10)
+    print(plot0)
+    print(plot1)
+    print(plot2)
+    print(plot3)
+    print(plot4)
+    print(plot5)
+    print(plot6)
+    print(plot7)
+    
+    dev.off()
+}
+
+my_dendrogram = function(norm_data, all_data1, pdf_name){
+    
+    who_cols =c(
+        'WHO I'="orange", 
+        'WHO II' = "forestgreen",
+        'WHO III' = "red", 
+        'Not Available' = "gray60", 
+        "human YAP1fus"="blue", 
+        "mouse YAP1fus"="lightpink1", 
+        "mouseNLS-2SA-YAP1" = "maroon")
+    # for TRAF7.KLF4.AKT1.SMO,
+    mut_cols = c(
+        "YES" = "red", 
+        "NO" = "black", 
+        'Not Available' = "gray60", 
+        "human YAP1fus"="blue", 
+        "mouse YAP1fus"="lightpink1", "mouseNLS-2SA-YAP1" = "maroon")
+    # for NF2mu_Chr22, 
+    nf2_cols = c(
+        "YES" = "red", 
+        "NO" = "black", 
+        'Not Available' = "gray60", 
+        "human YAP1fus"="blue", 
+        "mouse YAP1fus"="lightpink1", "mouseNLS-2SA-YAP1" = "maroon")
+    
+    colorCodes1 = who_cols
+    colorCodes2 = mut_cols
+    colorCodes3 = nf2_cols
+    
+    # dendrogram
+    sampleDists <- dist( t( norm_data ) )
+    hc = hclust(sampleDists)
+    dend <- as.dendrogram(hc)
+    
+    all_data1$NF2mu_Chr22[is.na( all_data1$NF2mu_Chr22 )]  = "Not Available"
+    all_data1$NF2mu_Chr22 = factor(all_data1$NF2mu_Chr22, levels = names(colorCodes3))
+    
+    all_data1$TRAF7.KLF4.AKT1.SMO[is.na( all_data1$TRAF7.KLF4.AKT1.SMO )]  = "Not Available"
+    all_data1$TRAF7.KLF4.AKT1.SMO = factor(all_data1$TRAF7.KLF4.AKT1.SMO, levels = names(colorCodes2))
+    
+    all_data1$WHO.grade[is.na( all_data1$WHO.grade )]  = "Not Available"
+    all_data1$WHO.grade = factor(all_data1$WHO.grade, levels = names(colorCodes1))
+    
+    pdf(file.path("exploratory_plots", paste0("Dendrgram_", pdf_name)), width =28 , height = 7)
+    labels_colors(dend) <- colorCodes1[all_data1$WHO.grade][order.dendrogram(dend)]
+    plot(dend, main = "WHO.grade")   
+    legend("topright", legend = names(colorCodes1), fill = colorCodes1)
+    
+    labels_colors(dend) <- colorCodes2[all_data1$TRAF7.KLF4.AKT1.SMO][order.dendrogram(dend)]
+    plot(dend, main = "TRAF7.KLF4.AKT1.SMO")   
+    legend("topright", legend = names(colorCodes2), fill = colorCodes2)
+    
+    labels_colors(dend) <- colorCodes3[all_data1$NF2mu_Chr22][order.dendrogram(dend)]
+    plot(dend, main = "NF2mu_Chr22")   
+    legend("topright", legend = names(colorCodes3), fill = colorCodes3)
+    
+    dev.off()
+}
+
+
+```
+
+# UMAP
+
+```{r}
+finaldf = read.delim("FULL_UMAP_data_3_18_2022.txt", header=T, stringsAsFactors = FALSE)
+pa_idx = which(finaldf$Methylation_status =="PA")
+mouseyap1_idx = which(finaldf$Methylation_status =="mouse YAP1fus")
+mouseNLS_idx = which(finaldf$Methylation_status =="mouseNLS-2SA-YAP1")
+
+
+# full dataset ( with PA)
+
+my_umap_fun(  sample_info =  finaldf , 
+             who_cols , nf2_cols, mut_cols, 
+             meth_cols, tag = "01_UMAP_full_dataset"  )
+
+finaldf2 = finaldf[ -c( pa_idx), ]
+my_umap_fun(  sample_info =  finaldf2 ,
+             who_cols[-8] , nf2_cols[-7], mut_cols[-7], meth_cols[-11],
+             tag = "02_UMAP_full_dataset_no_PA")
+
+
+
+# 3 datasets , wihout mouse NLS samples 
+
+finaldf3 = finaldf[ -c(mouseNLS_idx), ]
+my_umap_fun(  sample_info =  finaldf3 , 
+             who_cols[-7] , nf2_cols[-6], mut_cols[-6],  
+             meth_cols[-10], tag = "03_UMAP_NO_MOUSE_NLS"  )
+
+finaldf3 = finaldf[ -c(mouseNLS_idx, pa_idx), ]
+my_umap_fun(  sample_info =  finaldf3 ,
+             who_cols[-c(7,8)] , nf2_cols[-c(6,7)], mut_cols[-c(6,7)],
+             meth_cols[-c(10,11)], tag = "04_UMAP_NO_MOUSE_NLS_PA"  )
+
+
+# 3 datasets wirhout mouse YAP1 samples
+
+finaldf3 = finaldf[ -c(mouseyap1_idx), ]
+my_umap_fun(  sample_info =  finaldf3 , 
+             who_cols[-6] , nf2_cols[-5], mut_cols[-5], 
+             meth_cols[-c(9)], tag = "05_UMAP_no_mouse_yap1")
+
+
+
+finaldf3 = finaldf[ -c(mouseyap1_idx, pa_idx), ]
+my_umap_fun( data = temp_tpm, sample_info =  finaldf3 ,
+             who_cols[-c(6,8)] , nf2_cols[-c(5,7)], mut_cols[-c(5,7)],
+             meth_cols[-c(9,11)], tag = "06_UMAP_no_mouse_yap1_PA")
+
+
+#Only human datasets, no mouse tumors.
+
+finaldf3 = finaldf[ -c(mouseyap1_idx, mouseNLS_idx), ]
+my_umap_fun(  sample_info =  finaldf3 , 
+             who_cols[-c(6,7)] , nf2_cols[-c(5,6)], 
+             mut_cols[-c(5,6)], meth_cols[-c(9,10)], 
+             tag = "07_UMAP_no_mouse_yap1_NLS")
+
+
+finaldf3 = finaldf[ -c(mouseyap1_idx, mouseNLS_idx, pa_idx), ]
+my_umap_fun( sample_info =  finaldf3 ,
+             who_cols[-c(6,7,8)] , nf2_cols[-c(5,6,7)],
+             mut_cols[-c(5,6,7)],meth_cols[-c(9,10,11)],
+             tag = "08_UMAP_no_mouse_yap1_NLS_PA")
+```
+
+
+# Dendrogram 
+
+```{r}
+
+log2_tpm = readRDS(file = "log2_tpm.rds")
+rm_idx2 = c(which(finaldf$Dataset %in% c("mouse YAP1fus", "mouseNLS-2SA-YAP1")) )
+finaldf3 = finaldf[ -rm_idx2, ]
+
+norm_data  = log2_tpm[ , match( finaldf3$sampleName, colnames(log2_tpm) )]
+my_dendrogram(norm_data, finaldf3, "Only_Human_samples_with_PA.pdf" )
+
+
+# 2: oNLY Human samples ( NO PA) 
+rm_idx2 = c(which(finaldf$Dataset %in% c( "mouse YAP1fus", "mouseNLS-2SA-YAP1")), 
+            which(finaldf$Methylation_status =="PA"))
+finaldf3 = finaldf[ -rm_idx2, ]
+
+norm_data  = log2_tpm[ , match( finaldf3$sampleName, colnames(log2_tpm) )]
+my_dendrogram(norm_data, finaldf3, "Only_Human_samples_no_PA.pdf" )
+
+
+# 3: oNLY Human samples ( NO PA) + MOUSE YAP1 
+rm_idx2 = c(which(finaldf$Dataset %in% c("mouseNLS-2SA-YAP1" )) , 
+            which(finaldf$Methylation_status =="PA"))
+finaldf3 = finaldf[ -rm_idx2, ]
+
+norm_data  = log2_tpm[ , match( finaldf3$sampleName, colnames(log2_tpm) )]
+my_dendrogram(norm_data, finaldf3, "Human_samples_with_mouse_yap1_tumors_no_NLS.pdf" )
+
+
+# 4: All Human samples ( without PA) + mouse yap1 tumors + NLS 2SA-YAP1 tumors
+rm = which(finaldf$Methylation_status =="PA")
+if(length(rm)!=0){
+    finaldf2 = finaldf[ -rm, ]
+}
+
+norm_data  = log2_tpm[ , match( finaldf2$sampleName, colnames(log2_tpm) )]
+my_dendrogram(norm_data, finaldf3, "Full_dataset_without_PA_samples.pdf" )
+
+norm_data  = log2_tpm[ , match( finaldf$sampleName, colnames(log2_tpm) )]
+my_dendrogram(norm_data, finaldf3, "full_dataset.pdf" )
+```

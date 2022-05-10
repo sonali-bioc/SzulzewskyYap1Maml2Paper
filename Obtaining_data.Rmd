@@ -1,0 +1,119 @@
+---
+title: "Obtaining Data & aligning to hg38"
+author: "Sonali Arora"
+date: "May 9, 2022"
+output: 
+  html_document:
+    toc: true
+    theme: united
+---
+
+In this vignette, we will show how we downloaded the data, 
+aligned it to hg38 using STAR2
+
+# Obtaining Publicly available datasets
+
+Raw sequencing data ( fastq files) data for 160 meningiomas was downloaded from [GSE136661](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE136661)
+
+Raw sequencing data ( fastq files) data for 10 meningiomas was downloaded from
+[GSE139651](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE139651)
+
+Data was aligned using [star2](https://github.com/alexdobin/STAR) to hg38. Read counts were
+counted for gene asoociations using [htseq-count](https://htseq.readthedocs.io/en/release_0.11.1/count.html)
+
+# Mouse sequencing data from FHCC
+
+Raw sequencing data ( fastq files) data for mouse tumors 
+sequenced at FHCC was alined to mm10 using [star2](https://github.com/alexdobin/STAR). 
+Read counts were counted for gene asoociations using [htseq-count](https://htseq.readthedocs.io/en/release_0.11.1/count.html)
+mouse genes were comverted to human symbols using [biomart](https://bioconductor.org/packages/release/bioc/html/biomaRt.html)
+
+# Combing datasets
+
+Shared Protein coding genes present in each dataset were 
+used for all subsequent analysis.
+
+
+```{r}
+rm(list = ls())
+
+fname = "GSE136661_160meningiomas_hg38_raw_protein_coding_genes.txt"
+df1 = read.delim(fname, header=T, stringsAsFactors = FALSE)
+
+fname ="GSE139651_13meningiomas_hg38_raw_protein_coding_genes.txt"
+df2 =  read.delim(fname, header=T, stringsAsFactors = FALSE)
+
+raw = read.delim("star_hts_reverse_exon_raw_reads_with_gene_info.txt", 
+    header=T, stringsAsFactors=FALSE)
+
+gene_width = df2$width
+gene_name = df2$gene_name
+gene_id = df2$gene_id
+
+frank_mouse = read.delim( "star_hts_reverse_exon_raw_reads_human_symbols.txt", 
+  header=T, stringsAsFactors = FALSE, 
+  row.names=1, check.names = FALSE)
+
+# use only common genes.
+common_goi = intersect(gene_name, rownames(frank_mouse))
+length(common_goi) # 16895
+gene_width  = gene_width[ match(common_goi, gene_name)]
+gene_id  = gene_width[ match(common_goi, gene_id)]
+
+df1 = df1[ match(common_goi, gene_name), ]
+df2 = df2[ match(common_goi, gene_name), ]
+frank_mouse = frank_mouse[ common_goi, ]
+raw = raw[common_goi, ]
+
+rownames(df1) = rownames(df2) = common_goi
+```
+
+# Batch correction & Normalization.
+
+```{r}
+library(sva)
+batch <- c(rep(1, ncol(df1)), 
+           rep(2, ncol(df2)),  
+           rep(3, ncol(frank_mouse)), 
+           rep(4, ncol(raw))   )
+countData= cbind( df1, df2,  frank_mouse, raw)
+adjusted <- ComBat_seq(as.matrix(countData), batch=batch, group=NULL)
+
+library(edgeR)
+y <- DGEList(counts = adjusted)
+rpkm = rpkm(y, gene.length = gene_width)
+rownames(rpkm) = common_goi
+
+tpm = apply(rpkm, 2, function(x){
+    (x/sum(x))*10^6
+})
+log2_tpm =log2(tpm+1)
+cpm = cpm(adjusted)
+```
+
+# Calculate UMAP
+
+```{r}
+
+sample_info = read.delim("sample_info.txt", 
+  header=T, stringsAsFactors = FALSE)
+
+midx = match( colnames(countData), sample_info$sampleName)
+sample_info = sample_info[midx, ]
+
+identical( colnames(countData), sample_info$sampleName) 
+
+
+library(umap)
+umap_out <- umap(t(log2_tpm), random_state = 123, min_dist = 0.5) 
+umap_2d = umap_out$layout
+colnames(umap_2d) = c("UMAP1_2D", "UMAP2_2D")
+
+finaldf = cbind(sample_info, umap_3d, umap_2d )
+
+
+write.table(finaldf, "FULL_UMAP_data_3_18_2022.txt", 
+            sep ="\t", quote=FALSE, row.names=FALSE, col.names=TRUE)
+
+```
+
